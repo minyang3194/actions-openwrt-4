@@ -17,7 +17,6 @@ export kernel_usage="stable"
 cat >"$CLEAR_PATH" <<-EOF
 packages
 profiles.json
-config.buildinfo
 feeds.buildinfo
 sha256sums
 version.buildinfo
