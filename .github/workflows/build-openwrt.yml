@@ -28,7 +28,7 @@ on:
       TEMPOARY_IP:
         description: '请输入固件后台IP,比如： 192.168.1.1'
         required: true
-        default: ''
+        default: '192.168.2.99'
       UPLOAD_FIRMWARE:
         description: '上传固件到 Artifacts'
         required: true
