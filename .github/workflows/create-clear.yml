@@ -5,12 +5,12 @@
 #
 
 
-name: 创建和删除
+name: 创建和清理
 on:
   workflow_dispatch:
     inputs:
       Establish:
-        description: '创建文件夹（勾选为执行）'
+        description: '以[devices]为蓝本,创建其他机型文件夹(勾选为执行)'
         required: false
         default: 'false'
         type: boolean
@@ -18,24 +18,15 @@ on:
         description: '请输入您需要创建的文件夹名称'
         required: false
         default: ''
-      Deletefile:
-        description: '删除文件夹（勾选为执行）'
-        required: false
-        default: 'false'
-        type: boolean
-      Deletefile_name:
-        description: '请输入要删除的文件夹名称,一次删除多个请用英文逗号分开'
-        required: false
-        default: ''
       Delete_workflow:
-        description: '清理[X]天之前的Artifacts（勾选为执行）'
+        description: '清理[X]分钟之前的Artifacts（勾选为执行）'
         required: false
         default: 'false'
         type: boolean
-      RETAIN_DAYS:
-        description: '请修改清理[X]天之前的Artifacts数值'
+      RETAIN_MINUTE:
+        description: '请修改清理[X]分钟之前的Artifacts数值(最低可以填10)'
         required: true
-        default: '7'
+        default: '10080'
       Delete_releases:
         description: '保留[X]个Releases不被删除（勾选为执行）'
         required: false
@@ -52,7 +43,7 @@ env:
 jobs:
   del_runs:
     runs-on: Ubuntu-22.04
-    name: 创建和删除
+    name: 创建和清理
     
     steps:
     - name: 密匙检测（密匙为空则退出）
@@ -98,68 +89,38 @@ jobs:
           export yml_name1="$(grep 'name:' "${X}" |sed 's/^[ ]*//g' |grep -v '^#\|^-' |awk 'NR==1')"
           export yml_name2="name: ${{ inputs.establish_name }}"
           sed -i "s?${yml_name1}?${yml_name2}?g" "${X}"
-          echo "${{ inputs.establish_name }}文件夹创建完成"
         fi
-        if [[ -z "${{ inputs.Deletefile_name }}" ]] && [[ "${{ inputs.Deletefile }}" == 'true' ]]; then
-          cd $GITHUB_WORKSPACE
-          chmod -R 775 repogx
-          cd repogx
-          git add .
-          git commit -m "up"
-          git push --quiet "https://${{ secrets.REPO_TOKEN }}@github.com/${{github.repository}}" HEAD:main
-        fi
-  
-    - name: 删除文件夹
-      if: env.REPO_TOKEN && github.event.inputs.Deletefile == 'true'
-      run: |
-        cd $GITHUB_WORKSPACE
-        if [[ ! -d "repogx" ]]; then
-          git clone -b main https://github.com/${{github.repository}}.git repogx
-        fi
-        if [[ -z "${{ inputs.Deletefile_name }}" ]]; then
-          echo "文件夹名称为空，无法删除文件夹"
-          exit 1
-        else
-          export aa="${{ github.event.inputs.Deletefile_name }}"
-          export bb=(${aa//,/ })
-          for cc in ${bb[@]}; do
-            if [[ -d "repogx/build/${cc}" ]]; then
-              rm -rf repogx/build/"$cc"
-              rm -rf $(grep -rl "target: \[$cc\]" "repogx/.github/workflows" |sed 's/^[ ]*//g' |grep -v '^#\|packaging.yml')
-              echo -e "\033[31m 已删除[${cc}]文件夹 \033[0m"
-            else
-              echo -e "\033[31m [${cc}]文件夹不存在 \033[0m"
-            fi
-          done
-        fi
-        
-    - name: 清理Artifacts
-      continue-on-error: true
-      if: env.REPO_TOKEN  && github.event.inputs.Delete_workflow == 'true'
-      uses: Mattraks/delete-workflow-runs@v2
-      with:
-        token: ${{ secrets.REPO_TOKEN }}
-        repository: ${{ github.repository }}
-        retain_days: ${{ inputs.RETAIN_DAYS }}
-        keep_minimum_runs: 0
-    
-    - name: 删除releases
-      continue-on-error: true
-      if: env.REPO_TOKEN  && github.event.inputs.Delete_releases == 'true'
-      uses: danshui-git/delete-older-releases@main
-      with:
-        repo: ${{ github.repository }}
-        keep_latest: ${{ inputs.KEEP_LATEST }}
-        delete_tags: true
-      env:
-        GITHUB_TOKEN: ${{ secrets.REPO_TOKEN }}
-
-    - name: 运行程序
-      if: env.REPO_TOKEN && github.event.inputs.Deletefile == 'true' || env.REPO_TOKEN  && github.event.inputs.Establish == 'true'
-      run: |
         cd $GITHUB_WORKSPACE
         chmod -R 775 repogx
         cd repogx
         git add .
         git commit -m "up"
         git push --quiet "https://${{ secrets.REPO_TOKEN }}@github.com/${{github.repository}}" HEAD:main
+        if [[ $? -ne 0 ]];then
+          echo "创建${{ inputs.establish_name }}文件夹失败"
+          exit 1
+        else
+          echo "创建${{ inputs.establish_name }}文件夹完成"
+        fi
+        
+    - name: 清理Actions空间
+      continue-on-error: true
+      if: env.REPO_TOKEN  && github.event.inputs.Delete_workflow == 'true'
+      uses: small-5/delete-workflow-runs@main
+      with:
+        token: ${{ secrets.REPO_TOKEN }}
+        repository: ${{ github.repository }}
+        retain_min: ${{ inputs.RETAIN_MINUTE }}
+    
+    - name: 清理releases
+      continue-on-error: true
+      if: env.REPO_TOKEN  && github.event.inputs.Delete_releases == 'true'
+      uses: ophub/delete-releases-workflows@main
+      with:
+        delete_releases: true
+        releases_keep_keyword: targz
+        releases_keep_latest: ${{ inputs.KEEP_LATEST }}
+        delete_tags: true
+        delete_workflows: false
+        workflows_keep_day: 90
+        gh_token: ${{ secrets.REPO_TOKEN }}
